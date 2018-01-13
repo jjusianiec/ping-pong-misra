@@ -16,19 +16,20 @@ class RingWorker extends Actor with ActorLogging {
   var lastValue = 0
   var isPingPresent = false
   var isPongPresent = false
+  var inCriticalSection = false
 
 
   def next(): ActorRef =
     idToActor.filter(_._1 == (id + 1) % idToActor.size).head._2
 
 
-  def wantToWorkForGivenPercentage(d: Double): Boolean = {
+  def wantToEnterCriticalSection(d: Double): Boolean = {
     Random.nextFloat() > d
   }
 
   def sendNext(value: Int): Unit = {
     if (isPingPresent && isPongPresent) {
-      lastValue = - (Math.abs(lastValue) + 1)
+      lastValue = -(Math.abs(lastValue) + 1)
       next() ! Ping(-lastValue)
       next() ! Pong(lastValue)
       (isPingPresent, isPongPresent) = (false, false)
@@ -52,20 +53,25 @@ class RingWorker extends Actor with ActorLogging {
       idToActor.head._2 ! Pong(-1)
 
     case Ping(value) =>
-      isPingPresent = true
-      if (lastValue == value) {
-        //regenerate
-      } else if (wantToWorkForGivenPercentage(WantToWorkPercentage)) {
-
-      } else {
-        sendNext(value)
+      if (Math.abs(value) >= Math.abs(lastValue)) {
+        isPingPresent = true
+        if (lastValue == value) {
+          //regenerate
+        } else if (wantToEnterCriticalSection(WantToWorkPercentage)) {
+          
+          sendNext(value)
+        } else {
+          sendNext(value)
+        }
       }
 
 
     case Pong(value) =>
-      isPongPresent = true
-      if (lastValue == value) {
-        //regenerate
+      if (Math.abs(value) <= Math.abs(lastValue)) {
+        isPongPresent = true
+        if (lastValue == value) {
+          //regenerate
+        }
       }
   }
 }
