@@ -1,6 +1,6 @@
 package actor
 
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import message.{EnterCriticalSection, ExitCriticalSection}
 
 object CriticalSectionActor {
@@ -8,16 +8,14 @@ object CriticalSectionActor {
 }
 
 class CriticalSectionActor extends Actor with ActorLogging {
-  val Second = 1000
-  val CriticalSectionWorkTime: Int = 5 * Second
 
   def processCriticalSection(): Unit = {
-    Thread.sleep(CriticalSectionWorkTime)
+    Thread.sleep(5000)
   }
 
   override def receive: Receive = {
-    case EnterCriticalSection =>
+    case EnterCriticalSection(value: Int, response: ActorRef) =>
       processCriticalSection()
-      sender() ! ExitCriticalSection
+      response ! ExitCriticalSection(value)
   }
 }
