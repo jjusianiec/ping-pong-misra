@@ -8,3 +8,5 @@ case class Pong(value: Int) extends RingMessage
 case class Recognition(id: Int, idToActor: Map[Int, ActorRef]) extends RingMessage
 case class RecognitionAccept(id: Int) extends RingMessage
 case object Start extends RingMessage
+case object EnterCriticalSection extends RingMessage
+case object ExitCriticalSection extends RingMessage

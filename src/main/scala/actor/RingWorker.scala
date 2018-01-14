@@ -16,28 +16,56 @@ class RingWorker extends Actor with ActorLogging {
   var lastValue = 0
   var isPingPresent = false
   var isPongPresent = false
-  var inCriticalSection = false
+  var criticalSectionActor: ActorRef = context.actorOf(CriticalSectionActor.props())
 
 
   def next(): ActorRef =
     idToActor.filter(_._1 == (id + 1) % idToActor.size).head._2
 
-
   def wantToEnterCriticalSection(d: Double): Boolean = {
-    Random.nextFloat() > d
+    Random.nextFloat() < d
   }
 
   def sendNext(value: Int): Unit = {
     if (isPingPresent && isPongPresent) {
-      lastValue = -(Math.abs(lastValue) + 1)
-      next() ! Ping(-lastValue)
-      next() ! Pong(lastValue)
-      (isPingPresent, isPongPresent) = (false, false)
+      incarnate(value)
     } else if (isPingPresent) {
       isPingPresent = false
+      lastValue = Math.abs(value)
+      customLog("send ping")
+      next() ! Ping(Math.abs(value))
     } else if (isPongPresent) {
       isPongPresent = false
+      lastValue = -Math.abs(value)
+      customLog("send pong to")
+      next() ! Pong(-Math.abs(value))
     }
+  }
+
+  def isValueNotOld(value: Int): Boolean = {
+    Math.abs(value) >= Math.abs(lastValue)
+  }
+
+  def regenerate(value: Int): Unit = {
+    lastValue = -Math.abs(value)
+    isPongPresent = false
+    isPingPresent = false
+    customLog("regenerate value " + value)
+    next() ! Ping(Math.abs(value))
+    next() ! Pong(-Math.abs(value))
+  }
+
+  def incarnate(value: Int): Unit = {
+    isPingPresent = false
+    isPongPresent = false
+    lastValue = -(Math.abs(value) + 1)
+    customLog("incarnate to value " + (-(Math.abs(value) + 1)) + " value: " + value)
+    next() ! Ping(-lastValue)
+    next() ! Pong(lastValue)
+  }
+
+  def customLog(message: String): Unit = {
+    log.info(id + " [" + lastValue + "]: " + message)
   }
 
   override def receive: Receive = {
@@ -49,29 +77,35 @@ class RingWorker extends Actor with ActorLogging {
     case Start =>
       log.info(id + " start!")
       lastValue = -1
-      idToActor.head._2 ! Ping(1)
-      idToActor.head._2 ! Pong(-1)
+      idToActor(1) ! Ping(1)
+      idToActor(1) ! Pong(-1)
 
     case Ping(value) =>
-      if (Math.abs(value) >= Math.abs(lastValue)) {
+      if (isValueNotOld(value)) {
         isPingPresent = true
         if (lastValue == value) {
-          //regenerate
+          regenerate(value)
         } else if (wantToEnterCriticalSection(WantToWorkPercentage)) {
-          
+          customLog("enter critical section")
+          criticalSectionActor ! EnterCriticalSection
+        } else {
+          customLog("Im lazy!")
           sendNext(value)
+        }
+      }
+
+    case Pong(value) =>
+      if (isValueNotOld(value)) {
+        isPongPresent = true
+        if (lastValue == value) {
+          regenerate(value)
         } else {
           sendNext(value)
         }
       }
 
-
-    case Pong(value) =>
-      if (Math.abs(value) <= Math.abs(lastValue)) {
-        isPongPresent = true
-        if (lastValue == value) {
-          //regenerate
-        }
-      }
+    case ExitCriticalSection => {
+      customLog("exit critical section")
+    }
   }
 }
